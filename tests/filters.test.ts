@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTERS, filterApplications, hasActiveFilters, matchesQuery, type ApplicationFilters } from "@/lib/domain/filters";
+import { DEFAULT_FILTERS, filterApplications, hasActiveFilters, matchesQuery, type ApplicationFilters } from "@/core/domain/filters";
 import { makeApp } from "./fixtures";
 
 const apps = [

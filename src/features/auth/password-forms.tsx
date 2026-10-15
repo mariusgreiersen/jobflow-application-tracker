@@ -13,11 +13,11 @@ import {
   type ForgotPasswordValues,
   type ResetPasswordValues,
 } from "@/lib/validations/auth";
-import { requestPasswordReset, updatePassword, type AuthResult } from "./actions";
+import { requestPasswordReset, updatePassword, type AuthActionResult } from "./actions";
 import { AuthAlert } from "./auth-ui";
 
 export function ForgotPasswordForm({ disabled }: { disabled?: boolean }) {
-  const [result, setResult] = useState<AuthResult>({});
+  const [result, setResult] = useState<AuthActionResult>({});
   const [pending, startTransition] = useTransition();
   const form = useForm<ForgotPasswordValues>({
     resolver: zodResolver(forgotPasswordSchema),

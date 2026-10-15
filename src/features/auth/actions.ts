@@ -1,10 +1,15 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+/**
+ * Auth controllers: validate the request (Zod), call the auth use case, and
+ * translate the outcome into a redirect or a user-facing message.
+ */
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { APP_HOME, DEMO_COOKIE, safeNextPath } from "@/lib/routes";
+import { AFTER_SIGN_IN_PATH } from "@/core/application/use-cases/auth-use-cases";
+import { getAuthUseCases, isAuthConfigured } from "@/infrastructure/composition/server";
+import { DEMO_COOKIE, safeNextPath } from "@/lib/routes";
+import { authErrorMessage } from "@/lib/presenters/auth";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -16,108 +21,67 @@ import {
   type SignUpValues,
 } from "@/lib/validations/auth";
 
-export type AuthResult = { error?: string; message?: string };
+export type AuthActionResult = { error?: string; message?: string };
 
-const NOT_CONFIGURED: AuthResult = {
+const NOT_CONFIGURED: AuthActionResult = {
   error: "Accounts aren't available because Supabase isn't configured. You can still try the demo.",
 };
-
-async function siteUrl(): Promise<string> {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) return configured.replace(/\/$/, "");
-  const h = await headers();
-  const origin = h.get("origin");
-  if (origin) return origin;
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
+const INVALID_INPUT: AuthActionResult = { error: "Please check the highlighted fields." };
 
 /** Leaving demo mode when signing in avoids mixing demo and real sessions. */
 async function clearDemoCookie() {
   (await cookies()).delete(DEMO_COOKIE);
 }
 
-function friendlyAuthError(message: string): string {
-  if (/invalid login credentials/i.test(message)) return "Incorrect email or password.";
-  if (/email not confirmed/i.test(message)) return "Please confirm your email address first. Check your inbox.";
-  if (/already registered|already exists/i.test(message)) return "An account with this email already exists.";
-  if (/rate limit/i.test(message)) return "Too many attempts. Please wait a minute and try again.";
-  return message;
-}
-
-export async function signIn(values: LoginValues, next?: string): Promise<AuthResult> {
-  if (!isSupabaseConfigured()) return NOT_CONFIGURED;
+export async function signIn(values: LoginValues, next?: string): Promise<AuthActionResult> {
+  if (!isAuthConfigured()) return NOT_CONFIGURED;
   const parsed = loginSchema.safeParse(values);
-  if (!parsed.success) return { error: "Please check the highlighted fields." };
+  if (!parsed.success) return INVALID_INPUT;
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
-  if (error) return { error: friendlyAuthError(error.message) };
+  const result = await getAuthUseCases().signIn(parsed.data.email, parsed.data.password);
+  if (!result.ok) return { error: authErrorMessage(result.reason, result.message) };
 
   await clearDemoCookie();
   redirect(safeNextPath(next));
 }
 
-export async function signUp(values: SignUpValues): Promise<AuthResult> {
-  if (!isSupabaseConfigured()) return NOT_CONFIGURED;
+export async function signUp(values: SignUpValues): Promise<AuthActionResult> {
+  if (!isAuthConfigured()) return NOT_CONFIGURED;
   const parsed = signUpSchema.safeParse(values);
-  if (!parsed.success) return { error: "Please check the highlighted fields." };
+  if (!parsed.success) return INVALID_INPUT;
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${await siteUrl()}/auth/callback?next=${APP_HOME}`,
-    },
-  });
-  if (error) return { error: friendlyAuthError(error.message) };
+  const result = await getAuthUseCases().signUp(parsed.data);
+  if (!result.ok) return { error: authErrorMessage(result.reason, result.message) };
 
-  // With email confirmation disabled, Supabase returns a session immediately.
-  if (data.session) {
+  if (result.value.sessionCreated) {
     await clearDemoCookie();
-    redirect(APP_HOME);
+    redirect(AFTER_SIGN_IN_PATH);
   }
   return { message: `We sent a confirmation link to ${parsed.data.email}. Open it to activate your account.` };
 }
 
-export async function requestPasswordReset(values: ForgotPasswordValues): Promise<AuthResult> {
-  if (!isSupabaseConfigured()) return NOT_CONFIGURED;
+export async function requestPasswordReset(values: ForgotPasswordValues): Promise<AuthActionResult> {
+  if (!isAuthConfigured()) return NOT_CONFIGURED;
   const parsed = forgotPasswordSchema.safeParse(values);
   if (!parsed.success) return { error: "Enter a valid email address." };
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${await siteUrl()}/auth/callback?next=/reset-password`,
-  });
-  if (error && /rate limit/i.test(error.message)) return { error: friendlyAuthError(error.message) };
-
-  // Same response whether or not the account exists, so emails can't be enumerated.
+  const result = await getAuthUseCases().requestPasswordReset(parsed.data.email);
+  if (!result.ok) return { error: authErrorMessage(result.reason, result.message) };
   return { message: "If an account exists for that email, a reset link is on its way." };
 }
 
-export async function updatePassword(values: ResetPasswordValues): Promise<AuthResult> {
-  if (!isSupabaseConfigured()) return NOT_CONFIGURED;
+export async function updatePassword(values: ResetPasswordValues): Promise<AuthActionResult> {
+  if (!isAuthConfigured()) return NOT_CONFIGURED;
   const parsed = resetPasswordSchema.safeParse(values);
-  if (!parsed.success) return { error: "Please check the highlighted fields." };
+  if (!parsed.success) return INVALID_INPUT;
 
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) {
-    return { error: "Your reset link has expired. Request a new one." };
-  }
-  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
-  if (error) return { error: friendlyAuthError(error.message) };
-  redirect(APP_HOME);
+  const result = await getAuthUseCases().changePassword(parsed.data.password);
+  if (!result.ok) return { error: authErrorMessage(result.reason, result.message) };
+  redirect(AFTER_SIGN_IN_PATH);
 }
 
 export async function signOut(): Promise<void> {
-  if (isSupabaseConfigured()) {
-    const supabase = await createClient();
-    await supabase.auth.signOut();
-  }
+  if (isAuthConfigured()) await getAuthUseCases().signOut();
   await clearDemoCookie();
   redirect("/login");
 }

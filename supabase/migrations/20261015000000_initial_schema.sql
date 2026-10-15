@@ -148,7 +148,7 @@ create index application_activity_application_idx on public.application_activity
 
 -- Activity is written only by this trigger. It is security definer and there is
 -- no INSERT policy for users, so clients cannot forge history.
--- Mirrors deriveActivity() in src/lib/domain/activity.ts (used by demo mode).
+-- Mirrors deriveActivity() in src/core/domain/activity.ts (used by demo mode).
 create or replace function public.log_application_activity()
 returns trigger
 language plpgsql

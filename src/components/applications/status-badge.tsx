@@ -1,5 +1,5 @@
-import { STATUS_META } from "@/lib/domain/status";
-import type { ApplicationStatus } from "@/lib/domain/types";
+import { STATUS_META } from "@/lib/presenters/status";
+import type { ApplicationStatus } from "@/core/domain/types";
 import { cn } from "@/lib/utils";
 
 export function StatusDot({ status, className }: { status: ApplicationStatus; className?: string }) {

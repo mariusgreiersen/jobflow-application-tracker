@@ -14,9 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CompanyLogo } from "@/components/applications/company-logo";
 import { StatusDot } from "@/components/applications/status-badge";
-import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/domain/status";
-import { formatDateOnly, formatDateTime } from "@/lib/domain/format";
-import { BOARD_STATUSES, type Application, type ApplicationStatus } from "@/lib/domain/types";
+import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/presenters/status";
+import { formatDateOnly, formatDateTime } from "@/lib/presenters/format";
+import { BOARD_STATUSES, type Application, type ApplicationStatus } from "@/core/domain/types";
 import { cn } from "@/lib/utils";
 
 interface KanbanCardProps extends HTMLAttributes<HTMLDivElement> {

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { JobDataProvider, type DataMode } from "@/features/jobs/job-data-provider";
 import { ApplicationDialogsProvider } from "@/features/applications/application-dialogs";
-import type { Profile } from "@/lib/domain/types";
+import type { Profile } from "@/core/domain/types";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { DemoBanner } from "./demo-banner";

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { isAuthConfigured } from "@/infrastructure/composition/server";
 import { AuthAlert, AuthHeader, DemoLink, NotConfiguredNotice, OrDivider } from "@/features/auth/auth-ui";
 import { LoginForm } from "@/features/auth/login-form";
 
@@ -10,7 +10,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
   const next = typeof params.next === "string" ? params.next : undefined;
   const error = typeof params.error === "string" ? params.error : undefined;
-  const configured = isSupabaseConfigured();
+  const configured = isAuthConfigured();
 
   return (
     <>

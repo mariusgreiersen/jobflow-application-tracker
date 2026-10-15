@@ -25,9 +25,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { LoadError } from "@/components/loading";
 import { StatusDot } from "@/components/applications/status-badge";
-import { matchesQuery } from "@/lib/domain/filters";
-import { STATUS_META } from "@/lib/domain/status";
-import { BOARD_STATUSES, type Application, type BoardStatus } from "@/lib/domain/types";
+import { buildBoard, isBoardStatus } from "@/core/application/queries/board";
+import { STATUS_META } from "@/lib/presenters/status";
+import { BOARD_STATUSES, type Application, type BoardStatus } from "@/core/domain/types";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { useApplicationDialogs } from "@/features/applications/application-dialogs";
 import { cn } from "@/lib/utils";
@@ -43,19 +43,7 @@ const columnCoordinates: KeyboardCoordinateGetter = (event, { currentCoordinates
   return { ...currentCoordinates, x: currentCoordinates.x + step[event.code] };
 };
 
-function isBoardStatus(value: unknown): value is BoardStatus {
-  return typeof value === "string" && (BOARD_STATUSES as readonly string[]).includes(value);
-}
 
-/** Interview column: soonest interview first. Others: most recently applied first. */
-function sortColumn(status: BoardStatus, apps: Application[]): Application[] {
-  return apps.slice().sort((a, b) => {
-    if (status === "interview" && a.interviewAt && b.interviewAt) return a.interviewAt.localeCompare(b.interviewAt);
-    const ra = a.dateApplied ?? a.createdAt;
-    const rb = b.dateApplied ?? b.createdAt;
-    return rb.localeCompare(ra);
-  });
-}
 
 export function KanbanBoard() {
   const { status, error, reload, applications, moveApplication } = useJobData();
@@ -70,17 +58,10 @@ export function KanbanBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: columnCoordinates }),
   );
 
-  const visible = useMemo(
-    () => applications.filter((a) => !a.archivedAt && matchesQuery(a, query)),
+  const { columns, hiddenWithdrawn: withdrawnCount } = useMemo(
+    () => buildBoard(applications, query),
     [applications, query],
   );
-  const columns = useMemo(() => {
-    const map = new Map<BoardStatus, Application[]>(BOARD_STATUSES.map((s) => [s, []]));
-    for (const app of visible) if (isBoardStatus(app.status)) map.get(app.status)?.push(app);
-    for (const s of BOARD_STATUSES) map.set(s, sortColumn(s, map.get(s) ?? []));
-    return map;
-  }, [visible]);
-  const withdrawnCount = visible.filter((a) => a.status === "withdrawn").length;
 
   const byId = useMemo(() => new Map(applications.map((a) => [a.id, a])), [applications]);
   const activeApp = activeId ? byId.get(activeId) : undefined;
@@ -160,7 +141,7 @@ export function KanbanBoard() {
               <KanbanColumn
                 key={s}
                 status={s}
-                apps={columns.get(s) ?? []}
+                apps={columns[s]}
                 activeId={activeId}
                 onOpen={openDetail}
                 onMove={(id, to) => void moveApplication(id, to)}

@@ -1,4 +1,4 @@
-import type { ActivityEvent, Application, FollowUpTask } from "@/lib/domain/types";
+import type { ActivityEvent, Application, FollowUpTask } from "@/core/domain/types";
 
 let seq = 0;
 

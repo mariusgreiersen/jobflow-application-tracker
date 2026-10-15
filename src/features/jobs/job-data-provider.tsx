@@ -11,53 +11,61 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
-import { DemoRepository } from "@/lib/data/demo-repository";
-import type { JobRepository } from "@/lib/data/repository";
-import { SupabaseRepository } from "@/lib/data/supabase-repository";
-import { planStatusChange, STATUS_META } from "@/lib/domain/status";
+import type { PendingChange } from "@/core/application/use-cases/pending-change";
 import type {
-  ActivityEvent,
   Application,
   ApplicationInput,
-  ApplicationPatch,
   ApplicationStatus,
   FollowUpInput,
   FollowUpTask,
-  JobSnapshot,
   Profile,
-} from "@/lib/domain/types";
+} from "@/core/domain/types";
+import { createWorkspaceServices, type DataMode, type WorkspaceServices } from "@/infrastructure/composition/client";
+import { errorMessage } from "@/lib/presenters/errors";
+import { STATUS_META } from "@/lib/presenters/status";
 import { jobReducer, initialJobState, type JobState } from "./job-reducer";
 
-export type DataMode = "supabase" | "demo";
+export type { DataMode };
 
 interface JobDataContextValue extends JobState {
   mode: DataMode;
   profile: Profile;
   reload: () => Promise<void>;
-  createApplication: (input: ApplicationInput, followUp?: Omit<FollowUpInput, "applicationId">) => Promise<Application | null>;
-  updateApplication: (id: string, patch: ApplicationPatch, options?: { successMessage?: string }) => Promise<boolean>;
+  createApplication: (input: ApplicationInput, options?: { followUpDueAt?: string | null }) => Promise<Application | null>;
+  editApplication: (id: string, input: ApplicationInput) => Promise<boolean>;
   moveApplication: (id: string, status: ApplicationStatus) => Promise<void>;
+  scheduleInterview: (id: string, interview: { interviewAt: string; notes: string | null }) => Promise<boolean>;
   setArchived: (id: string, archived: boolean) => Promise<void>;
   deleteApplication: (id: string) => Promise<boolean>;
-  createTask: (input: FollowUpInput) => Promise<boolean>;
-  toggleTask: (id: string) => Promise<void>;
-  deleteTask: (id: string) => Promise<void>;
+  addFollowUp: (input: FollowUpInput) => Promise<boolean>;
+  toggleFollowUp: (id: string) => Promise<void>;
+  deleteFollowUp: (id: string) => Promise<void>;
   updateProfileName: (fullName: string) => Promise<boolean>;
-  resetDemo: () => Promise<void>;
+  /** Defined only in demo mode. */
+  resetDemo?: () => Promise<void>;
 }
 
 const JobDataContext = createContext<JobDataContextValue | null>(null);
 
-export function errorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
-    if (/failed to fetch|network/i.test(error.message)) return "Network error: check your connection.";
-    if (/row-level security|permission denied/i.test(error.message)) return "You don't have permission to do that.";
-    return error.message;
+/**
+ * Runs an operation and reports failure as a toast.
+ * Returns the result, or `undefined` if it threw.
+ */
+async function attempt<T>(failureTitle: string, operation: () => T | Promise<T>): Promise<T | undefined> {
+  try {
+    return await operation();
+  } catch (error) {
+    toast.error(failureTitle, { description: errorMessage(error) });
+    return undefined;
   }
-  return "Something went wrong. Please try again.";
 }
 
+/**
+ * Presentation-side state for the workspace (a controller over the use cases).
+ * Business decisions are made by use cases; this provider holds UI state,
+ * renders use-case previews optimistically, rolls them back on failure and
+ * reports outcomes as toasts.
+ */
 export function JobDataProvider({
   mode,
   profile: initialProfile,
@@ -75,15 +83,10 @@ export function JobDataProvider({
 
   // Created lazily on the client: browser storage and the Supabase browser
   // client must never be touched during server rendering.
-  const repoRef = useRef<JobRepository | null>(null);
-  const repo = useCallback((): JobRepository => {
-    if (!repoRef.current) {
-      repoRef.current =
-        mode === "demo"
-          ? new DemoRepository({ latencyMs: 150 })
-          : new SupabaseRepository(createClient(), initialProfile.id);
-    }
-    return repoRef.current;
+  const servicesRef = useRef<WorkspaceServices | null>(null);
+  const services = useCallback((): WorkspaceServices => {
+    servicesRef.current ??= createWorkspaceServices(mode, initialProfile.id);
+    return servicesRef.current;
   }, [mode, initialProfile.id]);
 
   // Read the latest state inside callbacks without re-creating them.
@@ -91,197 +94,179 @@ export function JobDataProvider({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+  const findApp = useCallback((id: string) => stateRef.current.applications.find((a) => a.id === id), []);
+  const findTask = useCallback((id: string) => stateRef.current.tasks.find((t) => t.id === id), []);
 
   const reload = useCallback(async () => {
     dispatch({ type: "loading" });
     try {
-      const snapshot: JobSnapshot = await repo().load();
+      const { snapshot, profileName } = await services().workspace.load();
       dispatch({ type: "loaded", snapshot });
-      const current = repoRef.current;
-      if (current instanceof DemoRepository) setProfile({ fullName: current.getProfileName() });
+      if (profileName) setProfile({ fullName: profileName });
     } catch (error) {
       dispatch({ type: "failed", error: errorMessage(error) });
     }
-  }, [repo]);
+  }, [services]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  /** History is written server-side by a trigger, so re-read it after changes. */
+  /** History is written as a side effect of persistence, so re-read it after changes. */
   const refreshActivity = useCallback(async () => {
     try {
-      const activity: ActivityEvent[] = await repo().listActivity();
-      dispatch({ type: "activity", activity });
+      dispatch({ type: "activity", activity: await services().workspace.refreshActivity() });
     } catch {
       // Non-critical: the next full load will catch up.
     }
-  }, [repo]);
-
-  const createApplication = useCallback<JobDataContextValue["createApplication"]>(
-    async (input, followUp) => {
-      try {
-        const app = await repo().createApplication(input);
-        dispatch({ type: "upsertApp", app });
-        if (followUp) {
-          const task = await repo().createTask({ ...followUp, applicationId: app.id });
-          dispatch({ type: "upsertTask", task });
-        }
-        toast.success(`Added ${app.company}`);
-        void refreshActivity();
-        return app;
-      } catch (error) {
-        toast.error("Couldn't save the application", { description: errorMessage(error) });
-        return null;
-      }
-    },
-    [repo, refreshActivity],
-  );
+  }, [services]);
 
   /**
-   * Applies a patch optimistically and rolls back to the previous version if the
-   * save fails, so the UI never shows data that isn't persisted.
+   * Shows a use case's preview immediately, persists it, and restores the
+   * previous version if saving fails, so the UI never shows unsaved data.
    */
-  const patchOptimistically = useCallback(
-    async (id: string, patch: ApplicationPatch, failureTitle: string): Promise<boolean> => {
-      const previous = stateRef.current.applications.find((a) => a.id === id);
-      if (!previous) return false;
-      dispatch({ type: "upsertApp", app: { ...previous, ...patch } });
-      try {
-        const saved = await repo().updateApplication(id, patch);
-        dispatch({ type: "upsertApp", app: saved });
-        void refreshActivity();
-        return true;
-      } catch (error) {
-        dispatch({ type: "upsertApp", app: previous });
-        toast.error(failureTitle, { description: errorMessage(error) });
-        return false;
-      }
+  const commitApp = useCallback(
+    async (previous: Application, change: PendingChange<Application>, failureTitle: string) => {
+      dispatch({ type: "upsertApp", app: change.preview });
+      const saved = await attempt(failureTitle, change.commit);
+      dispatch({ type: "upsertApp", app: saved ?? previous });
+      if (saved) void refreshActivity();
+      return saved !== undefined;
     },
-    [repo, refreshActivity],
+    [refreshActivity],
   );
 
-  const updateApplication = useCallback<JobDataContextValue["updateApplication"]>(
-    async (id, patch, options) => {
-      const ok = await patchOptimistically(id, patch, "Couldn't save your changes");
-      if (ok && options?.successMessage) toast.success(options.successMessage);
+  const commitTask = useCallback(async (previous: FollowUpTask, change: PendingChange<FollowUpTask>) => {
+    dispatch({ type: "upsertTask", task: change.preview });
+    const saved = await attempt("Couldn't update the follow-up", change.commit);
+    dispatch({ type: "upsertTask", task: saved ?? previous });
+  }, []);
+
+  const createApplication = useCallback<JobDataContextValue["createApplication"]>(
+    async (input, options) => {
+      const result = await attempt("Couldn't save the application", () =>
+        services().applications.create(input, options),
+      );
+      if (!result) return null;
+      dispatch({ type: "upsertApp", app: result.application });
+      if (result.followUp) dispatch({ type: "upsertTask", task: result.followUp });
+      toast.success(`Added ${result.application.company}`);
+      void refreshActivity();
+      return result.application;
+    },
+    [services, refreshActivity],
+  );
+
+  const editApplication = useCallback<JobDataContextValue["editApplication"]>(
+    async (id, input) => {
+      const app = findApp(id);
+      const change = app && (await attempt("Couldn't save your changes", () => services().applications.edit(app, input)));
+      if (!app || !change) return false;
+      const ok = await commitApp(app, change, "Couldn't save your changes");
+      if (ok) toast.success("Changes saved");
       return ok;
     },
-    [patchOptimistically],
+    [findApp, services, commitApp],
   );
 
   const moveApplication = useCallback<JobDataContextValue["moveApplication"]>(
     async (id, status) => {
-      const app = stateRef.current.applications.find((a) => a.id === id);
-      if (!app) return;
-      const patch = planStatusChange(app, status);
-      if (!patch) return;
-      const ok = await patchOptimistically(id, patch, `Couldn't move ${app.company}`);
-      if (ok) toast.success(`${app.company} moved to ${STATUS_META[status].label}`);
+      const app = findApp(id);
+      const change = app && services().applications.move(app, status);
+      if (!app || !change) return;
+      if (await commitApp(app, change, `Couldn't move ${app.company}`)) {
+        toast.success(`${app.company} moved to ${STATUS_META[status].label}`);
+      }
     },
-    [patchOptimistically],
+    [findApp, services, commitApp],
+  );
+
+  const scheduleInterview = useCallback<JobDataContextValue["scheduleInterview"]>(
+    async (id, interview) => {
+      const app = findApp(id);
+      if (!app) return false;
+      const ok = await commitApp(app, services().applications.scheduleInterview(app, interview), "Couldn't schedule the interview");
+      if (ok) toast.success(`Interview with ${app.company} scheduled`);
+      return ok;
+    },
+    [findApp, services, commitApp],
   );
 
   const setArchived = useCallback<JobDataContextValue["setArchived"]>(
     async (id, archived) => {
-      const app = stateRef.current.applications.find((a) => a.id === id);
-      if (!app) return;
-      const ok = await patchOptimistically(
-        id,
-        { archivedAt: archived ? new Date().toISOString() : null },
-        archived ? "Couldn't archive" : "Couldn't restore",
-      );
+      const app = findApp(id);
+      const change = app && services().applications.setArchived(app, archived);
+      if (!app || !change) return;
+      const ok = await commitApp(app, change, archived ? "Couldn't archive" : "Couldn't restore");
       if (ok) toast.success(archived ? `${app.company} archived` : `${app.company} restored`);
     },
-    [patchOptimistically],
+    [findApp, services, commitApp],
   );
 
   const deleteApplication = useCallback<JobDataContextValue["deleteApplication"]>(
     async (id) => {
-      const app = stateRef.current.applications.find((a) => a.id === id);
-      try {
-        await repo().deleteApplication(id);
-        dispatch({ type: "removeApp", id });
-        toast.success(app ? `Deleted ${app.company}` : "Application deleted");
+      const app = findApp(id);
+      const done = await attempt("Couldn't delete the application", async () => {
+        await services().applications.remove(id);
         return true;
-      } catch (error) {
-        toast.error("Couldn't delete the application", { description: errorMessage(error) });
-        return false;
-      }
+      });
+      if (!done) return false;
+      dispatch({ type: "removeApp", id });
+      toast.success(app ? `Deleted ${app.company}` : "Application deleted");
+      return true;
     },
-    [repo],
+    [findApp, services],
   );
 
-  const createTask = useCallback<JobDataContextValue["createTask"]>(
+  const addFollowUp = useCallback<JobDataContextValue["addFollowUp"]>(
     async (input) => {
-      try {
-        const task = await repo().createTask(input);
-        dispatch({ type: "upsertTask", task });
-        toast.success("Follow-up added");
-        return true;
-      } catch (error) {
-        toast.error("Couldn't add the follow-up", { description: errorMessage(error) });
-        return false;
-      }
+      const task = await attempt("Couldn't add the follow-up", () => services().followUps.add(input));
+      if (!task) return false;
+      dispatch({ type: "upsertTask", task });
+      toast.success("Follow-up added");
+      return true;
     },
-    [repo],
+    [services],
   );
 
-  const toggleTask = useCallback<JobDataContextValue["toggleTask"]>(
+  const toggleFollowUp = useCallback<JobDataContextValue["toggleFollowUp"]>(
     async (id) => {
-      const previous = stateRef.current.tasks.find((t) => t.id === id);
-      if (!previous) return;
-      const completedAt = previous.completedAt ? null : new Date().toISOString();
-      const optimistic: FollowUpTask = { ...previous, completedAt };
-      dispatch({ type: "upsertTask", task: optimistic });
-      try {
-        const saved = await repo().updateTask(id, { completedAt });
-        dispatch({ type: "upsertTask", task: saved });
-      } catch (error) {
-        dispatch({ type: "upsertTask", task: previous });
-        toast.error("Couldn't update the follow-up", { description: errorMessage(error) });
-      }
+      const task = findTask(id);
+      if (task) await commitTask(task, services().followUps.toggleCompleted(task));
     },
-    [repo],
+    [findTask, services, commitTask],
   );
 
-  const deleteTask = useCallback<JobDataContextValue["deleteTask"]>(
+  const deleteFollowUp = useCallback<JobDataContextValue["deleteFollowUp"]>(
     async (id) => {
-      const previous = stateRef.current.tasks.find((t) => t.id === id);
+      const previous = findTask(id);
       if (!previous) return;
       dispatch({ type: "removeTask", id });
-      try {
-        await repo().deleteTask(id);
-      } catch (error) {
-        dispatch({ type: "upsertTask", task: previous });
-        toast.error("Couldn't delete the follow-up", { description: errorMessage(error) });
-      }
+      const done = await attempt("Couldn't delete the follow-up", async () => {
+        await services().followUps.remove(id);
+        return true;
+      });
+      if (!done) dispatch({ type: "upsertTask", task: previous });
     },
-    [repo],
+    [findTask, services],
   );
 
   const updateProfileName = useCallback<JobDataContextValue["updateProfileName"]>(
     async (fullName) => {
-      try {
-        await repo().updateProfileName(fullName);
-        setProfile({ fullName });
-        toast.success("Profile updated");
-        return true;
-      } catch (error) {
-        toast.error("Couldn't update your profile", { description: errorMessage(error) });
-        return false;
-      }
+      const name = await attempt("Couldn't update your profile", () => services().workspace.renameProfile(fullName));
+      if (name === undefined) return false;
+      setProfile({ fullName: name });
+      toast.success("Profile updated");
+      return true;
     },
-    [repo],
+    [services],
   );
 
   const resetDemo = useCallback(async () => {
-    const current = repo();
-    if (!(current instanceof DemoRepository)) return;
-    current.reset();
+    services().resetDemoData?.();
     await reload();
     toast.success("Demo data reset");
-  }, [repo, reload]);
+  }, [services, reload]);
 
   const value = useMemo<JobDataContextValue>(
     () => ({
@@ -290,15 +275,16 @@ export function JobDataProvider({
       profile,
       reload,
       createApplication,
-      updateApplication,
+      editApplication,
       moveApplication,
+      scheduleInterview,
       setArchived,
       deleteApplication,
-      createTask,
-      toggleTask,
-      deleteTask,
+      addFollowUp,
+      toggleFollowUp,
+      deleteFollowUp,
       updateProfileName,
-      resetDemo,
+      resetDemo: mode === "demo" ? resetDemo : undefined,
     }),
     [
       state,
@@ -306,13 +292,14 @@ export function JobDataProvider({
       profile,
       reload,
       createApplication,
-      updateApplication,
+      editApplication,
       moveApplication,
+      scheduleInterview,
       setArchived,
       deleteApplication,
-      createTask,
-      toggleTask,
-      deleteTask,
+      addFollowUp,
+      toggleFollowUp,
+      deleteFollowUp,
       updateProfileName,
       resetDemo,
     ],
@@ -325,9 +312,4 @@ export function useJobData(): JobDataContextValue {
   const context = useContext(JobDataContext);
   if (!context) throw new Error("useJobData must be used inside <JobDataProvider>");
   return context;
-}
-
-export function useApplicationLookup() {
-  const { applications } = useJobData();
-  return useMemo(() => new Map(applications.map((a) => [a.id, a])), [applications]);
 }

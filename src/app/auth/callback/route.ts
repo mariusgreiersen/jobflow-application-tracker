@@ -1,7 +1,5 @@
-import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { getAuthUseCases, isAuthConfigured } from "@/infrastructure/composition/server";
 import { DEMO_COOKIE, safeNextPath } from "@/lib/routes";
 
 /**
@@ -15,22 +13,17 @@ export async function GET(request: NextRequest) {
   const fail = (reason: string) =>
     NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(reason)}`, origin));
 
-  if (!isSupabaseConfigured()) return fail("Authentication is not configured.");
+  if (!isAuthConfigured()) return fail("Authentication is not configured.");
 
-  const supabase = await createClient();
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
+  const type = searchParams.get("type");
+  if (!code && !(tokenHash && type)) return fail("Missing confirmation code.");
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) return fail("This link is invalid or has expired.");
-  } else if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
-    if (error) return fail("This link is invalid or has expired.");
-  } else {
-    return fail("Missing confirmation code.");
-  }
+  const result = await getAuthUseCases().completeEmailLink(
+    code ? { code } : { tokenHash: tokenHash as string, type: type as string },
+  );
+  if (!result.ok) return fail("This link is invalid or has expired.");
 
   const response = NextResponse.redirect(new URL(type === "recovery" ? "/reset-password" : next, origin));
   response.cookies.delete(DEMO_COOKIE);

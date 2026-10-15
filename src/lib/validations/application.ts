@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { fromDateTimeLocalValue, dateInputToMorningIso } from "@/lib/domain/dates";
+import { fromDateTimeLocalValue, dateInputToMorningIso } from "@/lib/forms/date-input";
 import {
   APPLICATION_STATUSES,
   WORK_TYPES,
   type ApplicationInput,
   type FollowUpInput,
-} from "@/lib/domain/types";
+} from "@/core/domain/types";
 
 function isHttpUrl(value: string): boolean {
   try {

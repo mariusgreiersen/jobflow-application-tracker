@@ -33,17 +33,11 @@ import { EmptyState } from "@/components/empty-state";
 import { ListSkeleton, LoadError } from "@/components/loading";
 import { CompanyLogo } from "@/components/applications/company-logo";
 import { StatusBadge, StatusDot } from "@/components/applications/status-badge";
-import {
-  DEFAULT_FILTERS,
-  SORT_OPTIONS,
-  filterApplications,
-  hasActiveFilters,
-  type ApplicationFilters,
-  type SortOption,
-} from "@/lib/domain/filters";
-import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/domain/status";
-import { formatDateOnly, formatDateTime } from "@/lib/domain/format";
-import { APPLICATION_STATUSES, WORK_TYPES, type Application } from "@/lib/domain/types";
+import { DEFAULT_FILTERS, filterApplications, hasActiveFilters, type ApplicationFilters, type SortOption } from "@/core/domain/filters";
+import { SORT_LABEL } from "@/lib/presenters/filters";
+import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/presenters/status";
+import { formatDateOnly, formatDateTime } from "@/lib/presenters/format";
+import { APPLICATION_STATUSES, WORK_TYPES, type Application } from "@/core/domain/types";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { useApplicationDialogs } from "./application-dialogs";
 
@@ -122,7 +116,7 @@ export function ApplicationsView({ initialQuery }: { initialQuery: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(SORT_OPTIONS).map(([value, label]) => (
+                {Object.entries(SORT_LABEL).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
                   </SelectItem>

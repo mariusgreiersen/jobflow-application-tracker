@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { format, startOfDay, subDays } from "date-fns";
+import { format } from "date-fns";
 import { BellRing, CalendarClock, CalendarPlus, ChevronDown, Clock3, MapPin, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
@@ -10,28 +10,15 @@ import { EmptyState } from "@/components/empty-state";
 import { LoadError, PanelSkeleton } from "@/components/loading";
 import { CompanyLogo } from "@/components/applications/company-logo";
 import { StatusBadge } from "@/components/applications/status-badge";
-import { groupFollowUps, upcomingInterviews } from "@/lib/domain/metrics";
-import { formatTime, relativeDayLabel } from "@/lib/domain/format";
-import { WORK_TYPE_LABEL } from "@/lib/domain/status";
-import type { Application, FollowUpTask } from "@/lib/domain/types";
+import { buildAgenda } from "@/core/application/queries/agenda";
+import { formatTime, relativeDayLabel } from "@/lib/presenters/format";
+import { WORK_TYPE_LABEL } from "@/lib/presenters/status";
+import type { Application, FollowUpTask } from "@/core/domain/types";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { useApplicationDialogs } from "@/features/applications/application-dialogs";
 import { FollowUpForm, FollowUpItem } from "@/features/followups/follow-up-components";
 import { ScheduleInterviewDialog } from "./schedule-interview-dialog";
 import { cn } from "@/lib/utils";
-
-/** Groups items by local calendar day, preserving order. */
-function groupByDay<T>(items: T[], getIso: (item: T) => string) {
-  const groups: Array<{ key: string; date: Date; items: T[] }> = [];
-  for (const item of items) {
-    const date = new Date(getIso(item));
-    const key = format(date, "yyyy-MM-dd");
-    const last = groups.at(-1);
-    if (last?.key === key) last.items.push(item);
-    else groups.push({ key, date: startOfDay(date), items: [item] });
-  }
-  return groups;
-}
 
 export function AgendaView() {
   const { status, error, reload, applications, tasks } = useJobData();
@@ -43,17 +30,7 @@ export function AgendaView() {
   const data = useMemo(() => {
     if (status !== "ready") return null;
     const now = new Date();
-    const lookup = new Map(applications.map((a) => [a.id, a]));
-    const recentCutoff = subDays(now, 14).getTime();
-    return {
-      now,
-      lookup,
-      upcoming: groupByDay(upcomingInterviews(applications, now), (a) => a.interviewAt as string),
-      past: applications
-        .filter((a) => a.interviewAt && new Date(a.interviewAt).getTime() < now.getTime() && new Date(a.interviewAt).getTime() >= recentCutoff)
-        .sort((a, b) => (b.interviewAt as string).localeCompare(a.interviewAt as string)),
-      followUps: groupFollowUps(tasks, now),
-    };
+    return { now, lookup: new Map(applications.map((a) => [a.id, a])), ...buildAgenda({ applications, tasks }, now) };
   }, [status, applications, tasks]);
 
   const activeApps = useMemo(() => applications.filter((a) => !a.archivedAt), [applications]);
@@ -86,7 +63,7 @@ export function AgendaView() {
       ) : (
         <div className="grid items-start gap-6 lg:grid-cols-5">
           <Panel title="Upcoming interviews" className="lg:col-span-3" bodyClassName="pt-3">
-            {data.upcoming.length === 0 ? (
+            {data.upcomingByDay.length === 0 ? (
               <EmptyState
                 compact
                 icon={CalendarClock}
@@ -100,7 +77,7 @@ export function AgendaView() {
               />
             ) : (
               <ol className="space-y-6">
-                {data.upcoming.map((group) => (
+                {data.upcomingByDay.map((group) => (
                   <li key={group.key}>
                     <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                       {relativeDayLabel(group.date, data.now)}
@@ -116,11 +93,11 @@ export function AgendaView() {
               </ol>
             )}
 
-            {data.past.length > 0 && (
+            {data.recentInterviews.length > 0 && (
               <div className="mt-8">
                 <h4 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Past two weeks</h4>
                 <ul className="space-y-2 opacity-75">
-                  {data.past.map((app) => (
+                  {data.recentInterviews.map((app) => (
                     <InterviewRow key={app.id} app={app} onOpen={() => openDetail(app.id)} past />
                   ))}
                 </ul>

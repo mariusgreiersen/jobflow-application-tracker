@@ -1,6 +1,5 @@
-import { resolveAppliedDate } from "@/lib/domain/status";
-import { dateInputToMorningIso, toDateTimeLocalValue } from "@/lib/domain/dates";
-import type { Application, ApplicationInput } from "@/lib/domain/types";
+import { dateInputToMorningIso, toDateTimeLocalValue } from "@/lib/forms/date-input";
+import type { Application, ApplicationInput } from "@/core/domain/types";
 import {
   EMPTY_APPLICATION_FORM,
   toApplicationInput,
@@ -27,13 +26,12 @@ export function toFormValues(app: Application): ApplicationFormValues {
   };
 }
 
-/** Form values -> domain input, applying the same applied-date rule as status moves. */
+/** Form values -> use-case input. Business defaults are applied by the use case. */
 export function formToInput(values: ApplicationFormValues): ApplicationInput {
-  const input = toApplicationInput(values);
-  return { ...input, dateApplied: resolveAppliedDate(input.status, input.dateApplied) };
+  return toApplicationInput(values);
 }
 
-export function followUpFromForm(values: ApplicationFormValues, company: string) {
-  const dueAt = values.followUpDate ? dateInputToMorningIso(values.followUpDate) : null;
-  return dueAt ? { title: `Follow up with ${company}`, dueAt } : undefined;
+/** The optional "follow-up reminder" date as a local-morning instant. */
+export function followUpDueAtFromForm(values: ApplicationFormValues): string | null {
+  return values.followUpDate ? dateInputToMorningIso(values.followUpDate) : null;
 }

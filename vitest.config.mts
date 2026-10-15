@@ -19,5 +19,13 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
+    coverage: {
+      provider: "v8",
+      // The gate applies to the framework-free core, where the business rules live.
+      include: ["src/core/**/*.ts"],
+      exclude: ["src/core/**/ports/**", "src/core/domain/types.ts", "src/core/application/use-cases/pending-change.ts"],
+      reporter: ["text", "html", "lcov"],
+      thresholds: { statements: 95, branches: 88, functions: 95, lines: 95 },
+    },
   },
 });

@@ -9,14 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormField, fieldA11y } from "@/components/form-field";
-import { fromDateTimeLocalValue } from "@/lib/domain/dates";
-import { isClosed, planStatusChange } from "@/lib/domain/status";
-import type { Application, ApplicationPatch } from "@/lib/domain/types";
+import { fromDateTimeLocalValue } from "@/lib/forms/date-input";
+import { isClosed } from "@/core/domain/status";
 import { interviewFormSchema, type InterviewFormValues } from "@/lib/validations/application";
 import { useJobData } from "@/features/jobs/job-data-provider";
 
 export function ScheduleInterviewDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { applications, updateApplication } = useJobData();
+  const { applications, scheduleInterview } = useJobData();
   const candidates = applications.filter((a) => !a.archivedAt && !isClosed(a.status));
 
   const form = useForm<InterviewFormValues>({
@@ -26,16 +25,10 @@ export function ScheduleInterviewDialog({ open, onOpenChange }: { open: boolean;
   const { errors, isSubmitting } = form.formState;
 
   const onSubmit = form.handleSubmit(async (values) => {
-    const app = applications.find((a) => a.id === values.applicationId) as Application;
-    const patch: ApplicationPatch = {
-      interviewAt: fromDateTimeLocalValue(values.interviewAt),
-      interviewNotes: values.interviewNotes.trim() || app.interviewNotes,
-    };
-    // Scheduling an interview moves an earlier-stage application to "Interview".
-    if (app.status === "saved" || app.status === "applied") {
-      Object.assign(patch, planStatusChange(app, "interview"));
-    }
-    const ok = await updateApplication(app.id, patch, { successMessage: `Interview with ${app.company} scheduled` });
+    const ok = await scheduleInterview(values.applicationId, {
+      interviewAt: fromDateTimeLocalValue(values.interviewAt) as string,
+      notes: values.interviewNotes.trim() || null,
+    });
     if (ok) {
       form.reset();
       onOpenChange(false);

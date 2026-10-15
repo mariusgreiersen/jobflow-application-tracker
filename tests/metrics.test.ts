@@ -9,7 +9,7 @@ import {
   safeRate,
   statusDistribution,
   upcomingInterviews,
-} from "@/lib/domain/metrics";
+} from "@/core/domain/metrics";
 import { makeApp, makeEvent, makeTask } from "./fixtures";
 
 const NOW = new Date("2026-10-15T12:00:00+02:00"); // Thursday

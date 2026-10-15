@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormField, fieldA11y } from "@/components/form-field";
 import { CompanyLogo } from "@/components/applications/company-logo";
-import { relativeDayLabel } from "@/lib/domain/format";
-import type { Application, FollowUpTask } from "@/lib/domain/types";
+import { relativeDayLabel } from "@/lib/presenters/format";
+import type { Application, FollowUpTask } from "@/core/domain/types";
 import { followUpFormSchema, toFollowUpInput, type FollowUpFormValues } from "@/lib/validations/application";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ export function FollowUpItem({
   onOpenApplication?: (id: string) => void;
   showCompany?: boolean;
 }) {
-  const { toggleTask, deleteTask } = useJobData();
+  const { toggleFollowUp, deleteFollowUp } = useJobData();
   const due = new Date(task.dueAt);
   const done = task.completedAt !== null;
   const overdue = !done && due < startOfDay(new Date());
@@ -38,7 +38,7 @@ export function FollowUpItem({
       <Checkbox
         id={checkboxId}
         checked={done}
-        onCheckedChange={() => void toggleTask(task.id)}
+        onCheckedChange={() => void toggleFollowUp(task.id)}
         className="mt-0.5"
         aria-label={done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`}
       />
@@ -71,7 +71,7 @@ export function FollowUpItem({
         variant="ghost"
         size="icon-sm"
         className="opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={() => void deleteTask(task.id)}
+        onClick={() => void deleteFollowUp(task.id)}
         aria-label={`Delete follow-up "${task.title}"`}
       >
         <Trash2 />
@@ -95,7 +95,7 @@ export function FollowUpForm({
   onDone?: () => void;
   compact?: boolean;
 }) {
-  const { createTask } = useJobData();
+  const { addFollowUp } = useJobData();
   const form = useForm<FollowUpFormValues>({
     resolver: zodResolver(followUpFormSchema),
     defaultValues: {
@@ -107,7 +107,7 @@ export function FollowUpForm({
   const { errors, isSubmitting } = form.formState;
 
   const onSubmit = form.handleSubmit(async (values) => {
-    const ok = await createTask(toFollowUpInput(values));
+    const ok = await addFollowUp(toFollowUpInput(values));
     if (ok) {
       form.reset({ ...values, title: "" });
       onDone?.();

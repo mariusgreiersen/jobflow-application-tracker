@@ -30,10 +30,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompanyLogo } from "@/components/applications/company-logo";
 import { StatusBadge, StatusDot } from "@/components/applications/status-badge";
-import { describeActivity } from "@/lib/domain/activity";
-import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/domain/status";
-import { formatDateOnly, formatDateTime, formatSalary, hostname, timeAgo } from "@/lib/domain/format";
-import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/domain/types";
+import { describeActivity } from "@/lib/presenters/activity";
+import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/presenters/status";
+import { formatDateOnly, formatDateTime, formatSalary, hostname, timeAgo } from "@/lib/presenters/format";
+import { APPLICATION_STATUSES, type ApplicationStatus } from "@/core/domain/types";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { FollowUpForm, FollowUpItem } from "@/features/followups/follow-up-components";
 import { useApplicationDialogs } from "./application-dialogs";

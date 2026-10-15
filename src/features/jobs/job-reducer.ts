@@ -1,4 +1,4 @@
-import type { ActivityEvent, Application, FollowUpTask, JobSnapshot } from "@/lib/domain/types";
+import type { ActivityEvent, Application, FollowUpTask, JobSnapshot } from "@/core/domain/types";
 
 export interface JobState {
   status: "loading" | "ready" | "error";

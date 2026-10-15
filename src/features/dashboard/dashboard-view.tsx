@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { subWeeks } from "date-fns";
 import {
   ArrowRight,
   BellRing,
@@ -24,15 +23,9 @@ import { LoadError, PanelSkeleton, StatsSkeleton } from "@/components/loading";
 import { StatusBarChart, WeeklyBarChart } from "@/components/charts/charts";
 import { CompanyLogo } from "@/components/applications/company-logo";
 import { StatusDot } from "@/components/applications/status-badge";
-import { describeActivity } from "@/lib/domain/activity";
-import {
-  applicationsPerWeek,
-  computeDashboardMetrics,
-  groupFollowUps,
-  statusDistribution,
-  upcomingInterviews,
-} from "@/lib/domain/metrics";
-import { formatTime, relativeDayLabel, timeAgo } from "@/lib/domain/format";
+import { describeActivity } from "@/lib/presenters/activity";
+import { buildDashboard } from "@/core/application/queries/dashboard";
+import { formatTime, relativeDayLabel, timeAgo } from "@/lib/presenters/format";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { useApplicationDialogs } from "@/features/applications/application-dialogs";
 import { FollowUpItem } from "@/features/followups/follow-up-components";
@@ -54,23 +47,10 @@ export function DashboardView() {
     // Dates are computed only after client-side load, so server and client
     // never disagree about the viewer's time zone during hydration.
     const now = new Date();
-    const lookup = new Map(applications.map((a) => [a.id, a]));
-    const followUps = groupFollowUps(tasks, now);
-    const weekAhead = now.getTime() + 7 * 24 * 60 * 60 * 1000;
     return {
       now,
-      lookup,
-      metrics: computeDashboardMetrics(applications, now),
-      weekly: applicationsPerWeek(applications, { start: subWeeks(now, 11), end: now }),
-      distribution: statusDistribution(applications.filter((a) => !a.archivedAt)),
-      interviews: upcomingInterviews(applications, now).slice(0, 5),
-      attention: [
-        ...followUps.overdue,
-        ...followUps.today,
-        ...followUps.upcoming.filter((t) => new Date(t.dueAt).getTime() <= weekAhead),
-      ].slice(0, 6),
-      overdueCount: followUps.overdue.length,
-      recent: activity.filter((e) => lookup.has(e.applicationId)).slice(0, 7),
+      lookup: new Map(applications.map((a) => [a.id, a])),
+      ...buildDashboard({ applications, tasks, activity }, now),
     };
   }, [status, applications, tasks, activity]);
 
@@ -84,7 +64,7 @@ export function DashboardView() {
         title={data ? `${greeting(data.now)}${firstName ? `, ${firstName}` : ""}` : "Dashboard"}
         description={
           data && applications.length > 0
-            ? `You have ${data.metrics.upcomingInterviews} upcoming interview${data.metrics.upcomingInterviews === 1 ? "" : "s"} and ${data.attention.length} follow-up${data.attention.length === 1 ? "" : "s"} this week.`
+            ? `You have ${data.metrics.upcomingInterviews} upcoming interview${data.metrics.upcomingInterviews === 1 ? "" : "s"} and ${data.needsFollowUp.length} follow-up${data.needsFollowUp.length === 1 ? "" : "s"} this week.`
             : "Here's an overview of your job search."
         }
         actions={
@@ -135,7 +115,7 @@ export function DashboardView() {
             <StatCard
               label="Upcoming interviews"
               value={data.metrics.upcomingInterviews}
-              sublabel={data.interviews[0] ? `Next: ${relativeDayLabel(new Date(data.interviews[0].interviewAt as string), data.now)}` : "None scheduled"}
+              sublabel={data.nextInterviews[0] ? `Next: ${relativeDayLabel(new Date(data.nextInterviews[0].interviewAt as string), data.now)}` : "None scheduled"}
               icon={CalendarCheck2}
               accent="violet"
               explanation="Interviews scheduled in the future on applications that aren't rejected, withdrawn or archived."
@@ -175,11 +155,11 @@ export function DashboardView() {
               action={<ViewAll href="/agenda" />}
               bodyClassName="px-3 pb-3 pt-2"
             >
-              {data.interviews.length === 0 ? (
+              {data.nextInterviews.length === 0 ? (
                 <EmptyState compact icon={CalendarClock} title="No interviews scheduled" description="Add an interview time to any application." />
               ) : (
                 <ul>
-                  {data.interviews.map((app) => {
+                  {data.nextInterviews.map((app) => {
                     const at = new Date(app.interviewAt as string);
                     return (
                       <li key={app.id}>
@@ -216,11 +196,11 @@ export function DashboardView() {
               action={<ViewAll href="/agenda" />}
               bodyClassName="px-3 pb-3 pt-2"
             >
-              {data.attention.length === 0 ? (
+              {data.needsFollowUp.length === 0 ? (
                 <EmptyState compact icon={BellRing} title="You're all caught up" description="No follow-ups due in the next 7 days." />
               ) : (
                 <ul>
-                  {data.attention.map((task) => (
+                  {data.needsFollowUp.map((task) => (
                     <FollowUpItem key={task.id} task={task} application={data.lookup.get(task.applicationId)} onOpenApplication={openDetail} />
                   ))}
                 </ul>
@@ -228,11 +208,11 @@ export function DashboardView() {
             </Panel>
 
             <Panel title="Recent activity" action={<ViewAll href="/applications" />} bodyClassName="px-3 pb-3 pt-2" className="lg:col-span-2 xl:col-span-1">
-              {data.recent.length === 0 ? (
+              {data.recentActivity.length === 0 ? (
                 <EmptyState compact icon={Clock3} title="No activity yet" />
               ) : (
                 <ul>
-                  {data.recent.map((event) => {
+                  {data.recentActivity.map((event) => {
                     const app = data.lookup.get(event.applicationId);
                     if (!app) return null;
                     return (

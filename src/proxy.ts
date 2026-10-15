@@ -1,8 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import type { Database } from "@/types/database";
 import { APP_HOME, DEMO_COOKIE, GUEST_ONLY_PATHS, isProtectedPath } from "@/lib/routes";
-import { isSupabaseConfigured, getSupabaseEnv } from "@/lib/supabase/env";
+import { refreshSession } from "@/infrastructure/supabase/proxy-session";
 
 /**
  * Runs before every page request:
@@ -16,54 +14,19 @@ import { isSupabaseConfigured, getSupabaseEnv } from "@/lib/supabase/env";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isDemo = request.cookies.get(DEMO_COOKIE)?.value === "1";
-  const isProtected = isProtectedPath(pathname);
+  const { response, isSignedIn } = await refreshSession(request);
 
-  if (!isSupabaseConfigured()) {
-    if (isProtected && !isDemo) return redirectTo(request, "/login");
-    return NextResponse.next({ request });
-  }
-
-  let response = NextResponse.next({ request });
-  const { url, key } = getSupabaseEnv();
-
-  const supabase = createServerClient<Database>(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet, headers) {
-        for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
-        }
-        for (const [header, value] of Object.entries(headers ?? {})) {
-          response.headers.set(header, value);
-        }
-      },
-    },
-  });
-
-  // getClaims() validates the JWT and refreshes an expired session.
-  // Nothing may run between creating the client and this call.
-  const { data } = await supabase.auth.getClaims();
-  const isSignedIn = Boolean(data?.claims?.sub);
-
-  if (isProtected && !isSignedIn && !isDemo) {
+  if (isProtectedPath(pathname) && !isSignedIn && !isDemo) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
     return withCookies(NextResponse.redirect(loginUrl), response);
   }
 
   if (isSignedIn && (GUEST_ONLY_PATHS as readonly string[]).includes(pathname)) {
-    return withCookies(redirectTo(request, APP_HOME), response);
+    return withCookies(NextResponse.redirect(new URL(APP_HOME, request.url)), response);
   }
 
   return response;
-}
-
-function redirectTo(request: NextRequest, path: string) {
-  return NextResponse.redirect(new URL(path, request.url));
 }
 
 /** Carries refreshed auth cookies over to a redirect response. */

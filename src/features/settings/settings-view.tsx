@@ -97,7 +97,7 @@ export function SettingsView() {
             <Button variant="outline" onClick={exportData} disabled={status !== "ready"}>
               <Download /> Export data
             </Button>
-            {mode === "demo" && (
+            {resetDemo && (
               <Button variant="outline" onClick={() => void resetDemo()}>
                 <RotateCcw /> Reset demo data
               </Button>

@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { Plus } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
-import { groupFollowUps } from "@/lib/domain/metrics";
+import { navigationBadges } from "@/core/application/queries/dashboard";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { useApplicationDialogs } from "@/features/applications/application-dialogs";
 import { cn } from "@/lib/utils";
@@ -19,11 +19,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { openCreate } = useApplicationDialogs();
 
   const counts = useMemo(() => {
-    const groups = groupFollowUps(tasks);
-    return {
-      "/agenda": groups.overdue.length + groups.today.length,
-      "/applications": applications.filter((a) => !a.archivedAt).length,
-    } as Record<string, number>;
+    const badges = navigationBadges({ applications, tasks }, new Date());
+    return { "/agenda": badges.followUpsDue, "/applications": badges.activeApplications } as Record<string, number>;
   }, [tasks, applications]);
 
   return (

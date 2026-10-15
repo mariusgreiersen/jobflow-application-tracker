@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { format, startOfDay, subMonths, subWeeks } from "date-fns";
 import { BarChart3, CalendarRange, Gauge, Plus, Target, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
@@ -9,62 +8,34 @@ import { Panel } from "@/components/panel";
 import { EmptyState } from "@/components/empty-state";
 import { LoadError, PanelSkeleton, StatsSkeleton } from "@/components/loading";
 import { ActivityLineChart, CumulativeAreaChart, StatusBarChart, WeeklyBarChart } from "@/components/charts/charts";
-import {
-  activityTrend,
-  applicationsPerWeek,
-  computeConversion,
-  cumulativeApplications,
-  statusDistribution,
-  type DateRange,
-} from "@/lib/domain/metrics";
-import { formatPercent } from "@/lib/domain/format";
-import { isSubmitted } from "@/lib/domain/status";
+import { ANALYTICS_RANGES, buildAnalytics, type AnalyticsRange } from "@/core/application/queries/analytics";
+import { formatPercent } from "@/lib/presenters/format";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { useApplicationDialogs } from "@/features/applications/application-dialogs";
 import { cn } from "@/lib/utils";
 
-const RANGES = {
-  "4w": { label: "4 weeks", start: (now: Date) => subWeeks(now, 4) },
-  "12w": { label: "12 weeks", start: (now: Date) => subWeeks(now, 12) },
-  "6m": { label: "6 months", start: (now: Date) => subMonths(now, 6) },
-  all: { label: "All time", start: () => null },
-} as const;
-type RangeKey = keyof typeof RANGES;
+const RANGE_LABEL: Record<AnalyticsRange, string> = {
+  "4w": "4 weeks",
+  "12w": "12 weeks",
+  "6m": "6 months",
+  all: "All time",
+};
 
 export function AnalyticsView() {
   const { status, error, reload, applications, activity, tasks } = useJobData();
   const { openCreate } = useApplicationDialogs();
-  const [rangeKey, setRangeKey] = useState<RangeKey>("12w");
+  const [rangeKey, setRangeKey] = useState<AnalyticsRange>("12w");
 
-  const data = useMemo(() => {
-    if (status !== "ready") return null;
-    const now = new Date();
-    const range: DateRange = { start: RANGES[rangeKey].start(now), end: now };
-    const startDay = range.start ? format(startOfDay(range.start), "yyyy-MM-dd") : null;
-    // An application is "in range" when it was applied (or, if only saved, created) within the range.
-    const inRange = applications.filter((a) => {
-      if (!startDay) return true;
-      const day = a.dateApplied ?? a.createdAt.slice(0, 10);
-      return day >= startDay;
-    });
-    const weekly = applicationsPerWeek(applications, range);
-    const submitted = inRange.filter((a) => isSubmitted(a.status)).length;
-    return {
-      conversion: computeConversion(inRange, activity),
-      cumulative: cumulativeApplications(applications, range),
-      weekly,
-      distribution: statusDistribution(inRange),
-      trend: activityTrend(activity, tasks, range),
-      perWeek: weekly.length > 0 ? submitted / weekly.length : null,
-      submitted,
-    };
-  }, [status, applications, activity, tasks, rangeKey]);
+  const data = useMemo(
+    () => (status === "ready" ? buildAnalytics({ applications, activity, tasks }, rangeKey, new Date()) : null),
+    [status, applications, activity, tasks, rangeKey],
+  );
 
   if (status === "error") return <LoadError message={error} onRetry={() => void reload()} />;
 
   const rangePicker = (
     <div role="group" aria-label="Time range" className="inline-flex rounded-lg border bg-card p-0.5 shadow-xs">
-      {(Object.keys(RANGES) as RangeKey[]).map((key) => (
+      {ANALYTICS_RANGES.map((key) => (
         <button
           key={key}
           type="button"
@@ -75,7 +46,7 @@ export function AnalyticsView() {
             rangeKey === key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {RANGES[key].label}
+          {RANGE_LABEL[key]}
         </button>
       ))}
     </div>

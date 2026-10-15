@@ -22,7 +22,7 @@ import { EMPTY_APPLICATION_FORM, type ApplicationFormValues } from "@/lib/valida
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { ApplicationForm } from "./application-form";
 import { ApplicationDetailSheet } from "./application-detail-sheet";
-import { followUpFromForm, formToInput, toFormValues } from "./form-values";
+import { followUpDueAtFromForm, formToInput, toFormValues } from "./form-values";
 
 interface DialogsContextValue {
   openCreate: (defaults?: Partial<ApplicationFormValues>) => void;
@@ -40,7 +40,7 @@ type FormState = { mode: "create"; defaults: ApplicationFormValues; key: number 
  * (dashboard, list, board, agenda) can open them without prop drilling.
  */
 export function ApplicationDialogsProvider({ children }: { children: ReactNode }) {
-  const { applications, createApplication, updateApplication, deleteApplication } = useJobData();
+  const { applications, createApplication, editApplication, deleteApplication } = useJobData();
   const [form, setForm] = useState<FormState | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -64,10 +64,10 @@ export function ApplicationDialogsProvider({ children }: { children: ReactNode }
   async function handleSubmit(values: ApplicationFormValues) {
     const input = formToInput(values);
     if (form?.mode === "edit") {
-      const ok = await updateApplication(form.id, input, { successMessage: "Changes saved" });
+      const ok = await editApplication(form.id, input);
       if (ok) setForm(null);
     } else {
-      const created = await createApplication(input, followUpFromForm(values, input.company));
+      const created = await createApplication(input, { followUpDueAt: followUpDueAtFromForm(values) });
       if (created) setForm(null);
     }
   }

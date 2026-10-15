@@ -14,8 +14,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { STATUS_META } from "@/lib/domain/status";
-import type { ActivityWeek, CumulativeCount, StatusCount, WeeklyCount } from "@/lib/domain/metrics";
+import { STATUS_META } from "@/lib/presenters/status";
+import type { ActivityWeek, CumulativeCount, StatusCount, WeeklyCount } from "@/core/domain/metrics";
 import { CHART, ChartLegend, ChartTooltip, ChartWithTable } from "./chart-parts";
 
 const AXIS_PROPS = { tickLine: false, axisLine: false, tick: CHART.axisTick } as const;

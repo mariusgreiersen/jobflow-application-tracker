@@ -2,8 +2,8 @@ import { BarChart3, CalendarClock, CalendarDays, KanbanSquare, LayoutDashboard, 
 import { CompanyLogo } from "@/components/applications/company-logo";
 import { StatusDot } from "@/components/applications/status-badge";
 import { LogoMark } from "@/components/logo";
-import type { BoardStatus } from "@/lib/domain/types";
-import { STATUS_META } from "@/lib/domain/status";
+import type { BoardStatus } from "@/core/domain/types";
+import { STATUS_META } from "@/lib/presenters/status";
 
 /**
  * Static illustration of the app for the landing page, built from the real UI

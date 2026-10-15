@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormField, fieldA11y } from "@/components/form-field";
 import { StatusDot } from "@/components/applications/status-badge";
-import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/domain/status";
-import { APPLICATION_STATUSES, WORK_TYPES } from "@/lib/domain/types";
+import { STATUS_META, WORK_TYPE_LABEL } from "@/lib/presenters/status";
+import { APPLICATION_STATUSES, WORK_TYPES } from "@/core/domain/types";
 import {
   applicationFormSchema,
   type ApplicationFormValues,

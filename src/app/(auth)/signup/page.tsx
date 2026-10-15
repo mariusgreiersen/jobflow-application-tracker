@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { isAuthConfigured } from "@/infrastructure/composition/server";
 import { AuthHeader, DemoLink, NotConfiguredNotice, OrDivider } from "@/features/auth/auth-ui";
 import { SignUpForm } from "@/features/auth/signup-form";
 
 export const metadata: Metadata = { title: "Create account" };
 
 export default function SignUpPage() {
-  const configured = isSupabaseConfigured();
+  const configured = isAuthConfigured();
   return (
     <>
       <AuthHeader

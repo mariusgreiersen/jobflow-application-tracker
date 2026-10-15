@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { initials } from "@/lib/domain/format";
+import { initials } from "@/lib/presenters/format";
 import { useJobData } from "@/features/jobs/job-data-provider";
 import { exitDemo, signOut } from "@/features/auth/actions";
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveActivity, describeActivity } from "@/lib/domain/activity";
-import { isClosed, isInProgress, isSubmitted, planStatusChange, resolveAppliedDate } from "@/lib/domain/status";
-import { APPLICATION_STATUSES } from "@/lib/domain/types";
+import { deriveActivity } from "@/core/domain/activity";
+import { describeActivity } from "@/lib/presenters/activity";
+import { isClosed, isInProgress, isSubmitted, planStatusChange, resolveAppliedDate } from "@/core/domain/status";
+import { APPLICATION_STATUSES } from "@/core/domain/types";
 import { makeApp } from "./fixtures";
 
 const NOW = new Date("2026-10-15T10:00:00+02:00");

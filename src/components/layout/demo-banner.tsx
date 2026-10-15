@@ -20,7 +20,7 @@ export function DemoBanner() {
       <span className="flex items-center gap-3">
         <button
           type="button"
-          onClick={() => void resetDemo()}
+          onClick={() => void resetDemo?.()}
           className="inline-flex items-center gap-1 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
         >
           <RotateCcw className="size-3" /> Reset

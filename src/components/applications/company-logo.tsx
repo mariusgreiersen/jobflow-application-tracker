@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { hueFromString, initials } from "@/lib/domain/format";
+import { hueFromString, initials } from "@/lib/presenters/format";
 import { cn } from "@/lib/utils";
 
 const SIZES = {

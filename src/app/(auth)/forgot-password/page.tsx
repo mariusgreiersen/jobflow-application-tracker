@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { isAuthConfigured } from "@/infrastructure/composition/server";
 import { AuthHeader, NotConfiguredNotice } from "@/features/auth/auth-ui";
 import { ForgotPasswordForm } from "@/features/auth/password-forms";
 
 export const metadata: Metadata = { title: "Reset password" };
 
 export default function ForgotPasswordPage() {
-  const configured = isSupabaseConfigured();
+  const configured = isAuthConfigured();
   return (
     <>
       <AuthHeader
